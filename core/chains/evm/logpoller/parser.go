@@ -268,15 +268,14 @@ func (v *pgDSLParser) whereClause(expressions []query.Expression, limiter query.
 			return "", errors.New("invalid cursor direction")
 		}
 
-		block, txHash, logIdx, err := valuesFromCursor(limiter.Limit.Cursor)
+		block, logIdx, err := valuesFromCursor(limiter.Limit.Cursor)
 		if err != nil {
 			return "", err
 		}
 
-		segment = fmt.Sprintf("%s AND block_number %s= :cursor_block AND tx_hash %s= :cursor_txhash AND log_index %s :cursor_log_index", segment, op, op, op)
+		segment = fmt.Sprintf("%s AND block_number %s= :cursor_block AND log_index %s :cursor_log_index", segment, op, op)
 
 		v.args.withField("cursor_block_number", block).
-			withField("cursor_txhash", common.HexToHash(txHash)).
 			withField("cursor_log_index", logIdx)
 	}
 
@@ -319,7 +318,7 @@ func (v *pgDSLParser) orderClause(limiter query.LimitAndSort) (string, error) {
 		case query.SortByBlock:
 			name = blockFieldName
 		case query.SortBySequence:
-			sort[idx] = fmt.Sprintf("block_number %s, tx_hash %s, log_index %s", order, order, order)
+			sort[idx] = fmt.Sprintf("block_number %s, log_index %s", order, order)
 
 			continue
 		case query.SortByTimestamp:
@@ -415,23 +414,25 @@ func orderToString(dir query.SortDirection) (string, error) {
 	}
 }
 
-func valuesFromCursor(cursor string) (int64, string, int, error) {
+func valuesFromCursor(cursor string) (int64, int, error) {
+	partCount := 2
+
 	parts := strings.Split(cursor, "-")
-	if len(parts) != 3 {
-		return 0, "", 0, fmt.Errorf("%w: must be composed as block-txhash-logindex", ErrUnexpectedCursorFormat)
+	if len(parts) != partCount {
+		return 0, 0, fmt.Errorf("%w: must be composed as block-logindex", ErrUnexpectedCursorFormat)
 	}
 
 	block, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		return 0, "", 0, fmt.Errorf("%w: block number not parsable as int64", ErrUnexpectedCursorFormat)
+		return 0, 0, fmt.Errorf("%w: block number not parsable as int64", ErrUnexpectedCursorFormat)
 	}
 
-	logIdx, err := strconv.ParseInt(parts[2], 10, 32)
+	logIdx, err := strconv.ParseInt(parts[1], 10, 32)
 	if err != nil {
-		return 0, "", 0, fmt.Errorf("%w: log index not parsable as int", ErrUnexpectedCursorFormat)
+		return 0, 0, fmt.Errorf("%w: log index not parsable as int", ErrUnexpectedCursorFormat)
 	}
 
-	return block, parts[1], int(logIdx), nil
+	return block, int(logIdx), nil
 }
 
 type addressFilter struct {
