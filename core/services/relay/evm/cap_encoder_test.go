@@ -19,9 +19,11 @@ var (
 	reportB = []byte{0xaa, 0xbb, 0xcc, 0xdd}
 
 	workflowID      = "15c631d295ef5e32deb99a10ee6804bc4af1385568f9b3363f6552ac6dbb2cef"
+	workflowName    = "aabbccddeeaabbccddee"
 	donID           = "00010203"
 	executionID     = "8d4e66421db647dd916d3ec28d56188c8d7dae5f808e03d03339ed2562f13bb0"
 	workflowOwnerID = "0000000000000000000000000000000000000000"
+	reportID        = "9988"
 
 	invalidID   = "not_valid"
 	wrongLength = "8d4e66"
@@ -48,10 +50,7 @@ func TestEVMEncoder_SingleField(t *testing.T) {
 
 	expected :=
 		// start of the outer tuple
-		workflowID +
-			donID +
-			executionID +
-			workflowOwnerID +
+		getHexMetadata() +
 			// start of the inner tuple (user_fields)
 			"0000000000000000000000000000000000000000000000000000000000000020" + // offset of Full_reports array
 			"0000000000000000000000000000000000000000000000000000000000000002" + // length of Full_reports array
@@ -87,10 +86,7 @@ func TestEVMEncoder_TwoFields(t *testing.T) {
 
 	expected :=
 		// start of the outer tuple
-		workflowID +
-			donID +
-			executionID +
-			workflowOwnerID +
+		getHexMetadata() +
 			// start of the inner tuple (user_fields)
 			"0000000000000000000000000000000000000000000000000000000000000040" + // offset of Prices array
 			"00000000000000000000000000000000000000000000000000000000000000a0" + // offset of Timestamps array
@@ -128,10 +124,7 @@ func TestEVMEncoder_Tuple(t *testing.T) {
 
 	expected :=
 		// start of the outer tuple
-		workflowID +
-			donID +
-			executionID +
-			workflowOwnerID +
+		getHexMetadata() +
 			// start of the inner tuple (user_fields)
 			"0000000000000000000000000000000000000000000000000000000000000020" + // offset of Elem tuple
 			"0000000000000000000000000000000000000000000000000000000000000040" + // offset of Prices array
@@ -176,10 +169,7 @@ func TestEVMEncoder_ListOfTuples(t *testing.T) {
 
 	expected :=
 		// start of the outer tuple
-		workflowID +
-			donID +
-			executionID +
-			workflowOwnerID +
+		getHexMetadata() +
 			// start of the inner tuple (user_fields)
 			"0000000000000000000000000000000000000000000000000000000000000020" + // offset of Elem list
 			"0000000000000000000000000000000000000000000000000000000000000002" + // length of Elem list
@@ -222,11 +212,19 @@ func TestEVMEncoder_InvalidIDs(t *testing.T) {
 	assert.ErrorContains(t, err, "incorrect length for id")
 }
 
+func getHexMetadata() string {
+	return "01" + executionID + "499602d2" + donID + workflowID + workflowName + workflowOwnerID + reportID
+}
+
 func getMetadata(cid string) consensustypes.Metadata {
 	return consensustypes.Metadata{
-		WorkflowID:    cid,
-		DONID:         donID,
+		Version:       1,
 		ExecutionID:   executionID,
+		Timestamp:     1234567890,
+		DONID:         donID,
+		WorkflowID:    cid,
+		WorkflowName:  workflowName,
 		WorkflowOwner: workflowOwnerID,
+		ReportID:      reportID,
 	}
 }

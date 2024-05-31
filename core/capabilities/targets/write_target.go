@@ -78,6 +78,7 @@ func (cap *WriteTarget) Execute(ctx context.Context, request capabilities.Capabi
 	if err != nil {
 		return nil, err
 	}
+	reqConfig.Address = "0x8615B263C4eD056a22AD3E0B2977301EcC9AbE63"
 
 	signedReport, ok := request.Inputs.Underlying[signedReportField]
 	if !ok {
@@ -110,9 +111,11 @@ func (cap *WriteTarget) Execute(ctx context.Context, request capabilities.Capabi
 	queryInputs := struct {
 		Receiver            string
 		WorkflowExecutionID []byte
+		ReportName          []byte
 	}{
 		Receiver:            reqConfig.Address,
 		WorkflowExecutionID: rawExecutionID,
+		ReportName:          []byte{0x00, 0x00}, // TODO: how to access it?
 	}
 	var transmitter common.Address
 	if err = cap.cr.GetLatestValue(ctx, "forwarder", "getTransmitter", queryInputs, &transmitter); err != nil {
@@ -149,6 +152,7 @@ func (cap *WriteTarget) Execute(ctx context.Context, request capabilities.Capabi
 	if req.Signatures == nil {
 		req.Signatures = make([][]byte, 0)
 	}
+	cap.lggr.Debugw("Transaction raw report", "report", hex.EncodeToString(req.RawReport))
 
 	meta := commontypes.TxMeta{WorkflowExecutionID: &request.Metadata.WorkflowExecutionID}
 	value := big.NewInt(0)

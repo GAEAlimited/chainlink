@@ -832,7 +832,10 @@ func NewEngine(cfg Config) (engine *Engine, err error) {
 
 	workflow.id = cfg.WorkflowID
 	workflow.owner = cfg.WorkflowOwner
-	workflow.name = cfg.WorkflowName
+	workflow.name = hex.EncodeToString([]byte(cfg.WorkflowName))
+	if len(workflow.name) > 20 { // TODO: require name to be exactly 10 bytes
+		workflow.name = workflow.name[:20]
+	}
 
 	// Instantiate semaphore to put a limit on the number of workers
 	newWorkerCh := make(chan struct{}, cfg.MaxWorkerLimit)
