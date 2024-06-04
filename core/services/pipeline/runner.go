@@ -133,6 +133,7 @@ func NewRunner(orm ORM, btORM bridges.ORM, cfg Config, bridgeCfg BridgeConfig, l
 // Start starts Runner.
 func (r *runner) Start(context.Context) error {
 	return r.StartOnce("PipelineRunner", func() error {
+		// starting cache can happen here for ORM
 		r.wgDone.Add(1)
 		go r.scheduleUnfinishedRuns()
 		if r.config.ReaperInterval() != time.Duration(0) {
@@ -300,6 +301,7 @@ func (r *runner) InitializePipeline(spec Spec) (pipeline *Pipeline, err error) {
 		case TaskTypeBridge:
 			task.(*BridgeTask).config = r.config
 			task.(*BridgeTask).bridgeConfig = r.bridgeConfig
+			// orm added to BridgeTask
 			task.(*BridgeTask).orm = r.btORM
 			task.(*BridgeTask).specId = spec.ID
 			// URL is "safe" because it comes from the node's own database. We

@@ -325,7 +325,8 @@ func NewApplication(opts ApplicationOpts) (Application, error) {
 	}
 
 	var (
-		pipelineORM    = pipeline.NewORM(opts.DS, globalLogger, cfg.JobPipeline().MaxSuccessfulRuns())
+		pipelineORM = pipeline.NewORM(opts.DS, globalLogger, cfg.JobPipeline().MaxSuccessfulRuns())
+		// bridge ORM can be initialized here
 		bridgeORM      = bridges.NewORM(opts.DS)
 		mercuryORM     = mercury.NewORM(opts.DS)
 		pipelineRunner = pipeline.NewRunner(pipelineORM, bridgeORM, cfg.JobPipeline(), cfg.WebServer(), legacyEVMChains, keyStore.Eth(), keyStore.VRF(), globalLogger, restrictedHTTPClient, unrestrictedHTTPClient)

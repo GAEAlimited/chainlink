@@ -14,6 +14,11 @@ import (
 	"github.com/smartcontractkit/chainlink/v2/core/auth"
 )
 
+const (
+	UpsertRetryDelay = 250 * time.Millisecond
+	UpsertRetryLimit = 1 * time.Minute
+)
+
 //go:generate mockery --quiet --name ORM --output ./mocks --case=underscore
 
 type ORM interface {
@@ -39,7 +44,8 @@ type ORM interface {
 type orm struct {
 	ds sqlutil.DataSource
 
-	bridgeTypesCache sync.Map
+	bridgeTypesCache     sync.Map
+	bridgeLastValueCache sync.Map
 }
 
 var _ ORM = (*orm)(nil)
@@ -179,7 +185,14 @@ func (o *orm) UpdateBridgeType(ctx context.Context, bt *BridgeType, btr *BridgeT
 	return err
 }
 
-func (o *orm) GetCachedResponse(ctx context.Context, dotId string, specId int32, maxElapsed time.Duration) (response []byte, err error) {
+func (o *orm) GetCachedResponse(ctx context.Context, dotId string, specId int32, maxElapsed time.Duration) ([]byte, error) {
+	// prefer to get latest value from cache
+	cachedResponse, inCache := o.bridgeLastValueCache.Load(responseKey(dotId, specId))
+	if inCache {
+		return cachedResponse.([]byte), nil
+	}
+
+	// if not in cache, fallback to the data store
 	stalenessThreshold := time.Now().Add(-maxElapsed)
 	sql := `SELECT value FROM bridge_last_value WHERE
 				dot_id = $1 AND 
@@ -187,18 +200,28 @@ func (o *orm) GetCachedResponse(ctx context.Context, dotId string, specId int32,
 				finished_at > ($3)	
 				ORDER BY finished_at 
 				DESC LIMIT 1;`
-	err = pkgerrors.Wrap(o.ds.GetContext(ctx, &response, sql, dotId, specId, stalenessThreshold), fmt.Sprintf("failed to fetch last good value for task %s spec %d", dotId, specId))
-	return
+
+	var response []byte
+
+	if err := pkgerrors.Wrap(
+		o.ds.GetContext(ctx, &response, sql, dotId, specId, stalenessThreshold),
+		fmt.Sprintf("failed to fetch last good value for task %s spec %d", dotId, specId),
+	); err != nil {
+		return nil, err
+	}
+
+	o.bridgeLastValueCache.Store(responseKey(dotId, specId), response)
+
+	return response, nil
 }
 
 func (o *orm) UpsertBridgeResponse(ctx context.Context, dotId string, specId int32, response []byte) error {
-	sql := `INSERT INTO bridge_last_value(dot_id, spec_id, value, finished_at) 
-				VALUES($1, $2, $3, $4)
-			ON CONFLICT ON CONSTRAINT bridge_last_value_pkey
-				DO UPDATE SET value = $3, finished_at = $4;`
+	o.bridgeLastValueCache.Store(responseKey(dotId, specId), response)
 
-	_, err := o.ds.ExecContext(ctx, sql, dotId, specId, response, time.Now())
-	return pkgerrors.Wrap(err, "failed to upsert bridge response")
+	// async call to the data store with retry
+	go o.upsertResponse(ctx, dotId, specId, response, UpsertRetryDelay)
+
+	return nil
 }
 
 // --- External Initiator
@@ -265,4 +288,29 @@ func (o *orm) FindExternalInitiator(ctx context.Context, eia *auth.Token) (*Exte
 func (o *orm) FindExternalInitiatorByName(ctx context.Context, iname string) (exi ExternalInitiator, err error) {
 	err = o.ds.GetContext(ctx, &exi, `SELECT * FROM external_initiators WHERE lower(name) = lower($1)`, iname)
 	return
+}
+
+func (o *orm) upsertResponse(ctx context.Context, dotId string, specId int32, response []byte, nextDelay time.Duration) {
+	sql := `INSERT INTO bridge_last_value(dot_id, spec_id, value, finished_at) 
+				VALUES($1, $2, $3, $4)
+			ON CONFLICT ON CONSTRAINT bridge_last_value_pkey
+				DO UPDATE SET value = $3, finished_at = $4;`
+
+	_, err := o.ds.ExecContext(ctx, sql, dotId, specId, response, time.Now())
+	if err != nil {
+		// TODO: log a warning and retry
+		time.Sleep(nextDelay)
+
+		nextDelay = nextDelay + UpsertRetryDelay
+		if nextDelay > UpsertRetryLimit {
+			// TODO: log an error and return
+			return
+		}
+
+		o.upsertResponse(ctx, dotId, specId, response, nextDelay)
+	}
+}
+
+func responseKey(dotId string, specId int32) string {
+	return fmt.Sprintf("%s||%d", dotId, specId)
 }
