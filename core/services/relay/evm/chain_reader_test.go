@@ -2,6 +2,7 @@ package evm_test
 
 import (
 	"crypto/ecdsa"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -15,7 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	evmtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -221,7 +221,7 @@ func (it *chainReaderInterfaceTester) Setup(t *testing.T) {
 							&codec.HardCodeModifierConfig{
 								OnChainValues: map[string]any{
 									"BigField": testStruct.BigField.String(),
-									"Account":  hexutil.Encode(testStruct.Account),
+									"Account":  testStruct.Account,
 								},
 							},
 							&codec.RenameModifierConfig{Fields: map[string]string{"NestedStruct.Inner.IntVal": "I"}},
@@ -252,10 +252,15 @@ func (it *chainReaderInterfaceTester) Name() string {
 }
 
 func (it *chainReaderInterfaceTester) GetAccountBytes(i int) []byte {
-	account := [20]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	account[i%20] += byte(i)
-	account[(i+3)%20] += byte(i + 3)
-	return account[:]
+	account := new(common.Address)
+
+	bts := [20]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	bts[i%20] += byte(i)
+	bts[(i+3)%20] += byte(i + 3)
+
+	account.SetBytes(bts[:])
+
+	return account.Bytes()
 }
 
 func (it *chainReaderInterfaceTester) GetChainReader(t *testing.T) clcommontypes.ContractReader {
@@ -277,19 +282,15 @@ func (it *chainReaderInterfaceTester) GetChainReader(t *testing.T) clcommontypes
 	require.NoError(t, lp.Start(ctx))
 
 	// TODO  uncomment this after this is fixed BCF-3242
-	//chain := mocks.NewChain(t)
-	//chain.Mock.On("LogPoller").Return(lp)
-	//chain.Mock.On("ID").Return(it.client.ConfiguredChainID())
-	//
-	//keyStore := cltest.NewKeyStore(t, db)
-	//relayer, err := evm.NewRelayer(lggr, chain, evm.RelayerOpts{DS: db, CSAETHKeystore: keyStore, CapabilitiesRegistry: capabilities.NewRegistry(lggr)})
-	//require.NoError(t, err)
-	//
-	//cfgBytes, err := cbor.Marshal(it.chainConfig)
-	//require.NoError(t, err)
-	//cr, err := relayer.NewContractReader(cfgBytes)
+	// test that an encoded config can be decoded and used properly within the reader
+	cfgBytes, err := json.Marshal(it.chainConfig)
+	require.NoError(t, err)
 
-	cr, err := evm.NewChainReaderService(ctx, lggr, lp, it.client, it.chainConfig)
+	// the following helper function uses the json package to decode a config from bytes
+	cfg, err := types.ChainReaderConfigFromBytes(cfgBytes)
+	require.NoError(t, err)
+
+	cr, err := evm.NewChainReaderService(ctx, lggr, lp, it.client, cfg)
 	require.NoError(t, err)
 	require.NoError(t, cr.Start(ctx))
 	it.cr = cr
