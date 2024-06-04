@@ -16,6 +16,7 @@ contract KeystoneForwarder_ReportTest is BaseTest {
   bytes32 internal workflowId = hex"6d795f6964000000000000000000000000000000000000000000000000000000";
   address internal workflowOwner = address(51);
   bytes32 internal executionId = hex"6d795f657865637574696f6e5f69640000000000000000000000000000000000";
+  bytes2 internal reportName = hex"0001";
   bytes[] internal mercuryReports = new bytes[](2);
   bytes internal rawReports;
   bytes internal report;
@@ -26,7 +27,7 @@ contract KeystoneForwarder_ReportTest is BaseTest {
   function setUp() public override {
     BaseTest.setUp();
 
-    s_forwarder.setConfig(DON_ID, F, _getSignerAddresses());
+    s_forwarder.setConfig(DON_ID, CONFIG_VERSION, F, CONFIG_VERSION, _getSignerAddresses());
 
     mercuryReports[0] = hex"010203";
     mercuryReports[1] = hex"aabbccdd";
@@ -112,11 +113,11 @@ contract KeystoneForwarder_ReportTest is BaseTest {
     s_forwarder.report(address(s_receiver), report, reportContext, signatures);
   }
 
-  function test_RevertWhen_ReportAlreadyProcessed() public {
+  function test_RevertWhen_AlreadyProcessed() public {
     s_forwarder.report(address(s_receiver), report, reportContext, signatures);
     bytes32 reportId = keccak256(bytes.concat(bytes20(uint160(address(s_receiver))), executionId));
 
-    vm.expectRevert(abi.encodeWithSelector(KeystoneForwarder.ReportAlreadyProcessed.selector, reportId));
+    vm.expectRevert(abi.encodeWithSelector(KeystoneForwarder.AlreadyProcessed.selector, reportId));
     s_forwarder.report(address(s_receiver), report, reportContext, signatures);
   }
 
@@ -133,7 +134,7 @@ contract KeystoneForwarder_ReportTest is BaseTest {
     s_forwarder.report(address(s_receiver), report, reportContext, signatures);
 
     // validate transmitter was recorded
-    address transmitter = s_forwarder.getTransmitter(address(s_receiver), executionId);
+    address transmitter = s_forwarder.getTransmitter(address(s_receiver), executionId, reportName);
     assertEq(transmitter, TRANSMITTER, "transmitter mismatch");
   }
 }
